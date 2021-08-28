@@ -4,7 +4,7 @@ A simple, opinionated, header-only C++ wrapper for [curses](https://en.wikipedia
 
 # Prerequisites
 
-* A [curses](https://en.wikipedia.org/wiki/Curses_(programming_library) library like [ncurses](https://en.wikipedia.org/wiki/Ncurses)
+* A [curses](https://en.wikipedia.org/wiki/Curses_(programming_library)) library like [ncurses](https://en.wikipedia.org/wiki/Ncurses)
 * C++11
 * Doxygen (for documentation only)
 
