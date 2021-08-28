@@ -168,7 +168,9 @@ public:
 
 
   void draw(WINDOW* parent) {
-    m_window = derwin(parent, m_cols, m_rows, y(), x());
+	if (!m_window) {
+    	m_window = derwin(parent, m_cols, m_rows, y(), x());
+	}
 	if (m_border) {
 		box(m_window, 0, 0);
 	}
@@ -203,6 +205,13 @@ public:
 		wmove(this->m_window, i, element->x());
 		for (int j = 0; j < element->cols(); j++) {
 			waddch(this->m_window, ' ');
+		}
+	}
+	if (m_border) {
+		if (element->x() == 0 || element->y() == 0 ||
+			(element->x() + element->cols()) == (m_cols - 1) ||
+			(element->y() + element->rows()) == (m_rows - 1)) {
+			draw(NULL); // Parent not necessary, just redrawing border.
 		}
 	}
   	m_elements.erase(name);
