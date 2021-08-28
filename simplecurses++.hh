@@ -15,10 +15,10 @@
 #include <curses.h>
 
 #include <iostream>
+#include <map>
 #include <memory>
 #include <string>
 #include <utility>
-#include <vector>
 
 /**
  * @example example.cpp
@@ -45,7 +45,7 @@ private:
 };
 
 /**
- * @brief Represents a named element in the user interfaces
+ * @brief Represents an element in the interface
  */
 class Element {
 public:
@@ -53,20 +53,16 @@ public:
   /**
    * @brief Constructor
    *
-   * @param name The name of the element
    * @param x The x coordinate relative to its container
    * @param y The y coordinate relative to its container
    */
-  Element(const std::string &name, int x, int y)
-      : m_name(name), m_x(x), m_y(y) {}
+  Element(int x, int y)
+      :  m_x(x), m_y(y) {}
 
   /**
    * @brief Destructor
    */
   virtual ~Element() = default;
-
-  /** @brief The name of the element **/
-  const std::string &name() const { return m_name; }
 
   /** @brief The x coordinate of the element **/
   int x() const { return m_x; }
@@ -80,10 +76,13 @@ public:
   /** @brief The number of cols occupied by the element **/
   virtual int cols() const = 0;
 
-private:
+  /** @brief Draw element onto window.
+   *
+   * @param The parent window.
+   */
+  virtual void draw(WINDOW* parent) = 0;
 
-  /** @brief Name of element **/
-  std::string m_name;
+private:
 
   /** @brief The x coordinate **/
   int m_x;
@@ -92,120 +91,10 @@ private:
   int m_y;
 };
 
-
-/**
- * @brief A window in the interface
- */
-class Window : public Element {
-public:
-
-  /** 
-   * @brief Destructor
-   */
-  virtual ~Window() {
-	delwin(m_window);
-  }
-
-  /**
-   * @brief Updates the screen with the changes in the window
-   */
-  void update() { 
-	  std::for_each(m_subwindows.begin(), m_subwindows.end(), [&](WindowPtr& window) {
-	  		window->update();
-	  });
-	  wsyncup(m_window);
-	  wrefresh(m_window);
-  }
-
-  /**
-   * @copydoc Element::rows()
-   */
-  int rows() const { return m_rows; }
-
-  /**
-   * @copydoc Element::cols()
-   */
-  int cols() const { return m_cols; }
-
-  /**
-   * @brief Create a child Window inside the (parent) Window
-   *
-   * @param name The name of the window
-   * @param relativex The x coordinate relative to the parent
-   * @param relativey The y coordinate relative to the parent
-   */
-  Window &createWindow(const std::string &name, int relativex, int relativey,
-                       int rows, int cols, bool border = false) {
-    if (((relativex + rows) > m_rows) || ((relativey + cols) > m_cols)) {
-      throw CursesException("Subwindow too large.");
-    }
-
-    WINDOW *win = derwin(m_window, cols, rows, relativey, relativex);
-    if (border) {
-      box(win, 0, 0);
-    }
-    m_subwindows.push_back(
-        WindowPtr(new Window(name, relativex, relativey, border, win)));
-    return *(m_subwindows.back());
-  }
-
-  /**
-   * @brief Add text to the Window
-   *
-   * @param name The name of text field
-   * @param relativex The x coordinate relative to the Window
-   * @param relativey The y coordinate relative to the Window
-   * @param text The text to insert
-   */
-  void addText(const std::string &name, int relativex, int relativey,
-               const std::string &text) {
-
-	if (m_border) {
-		relativex++;
-		relativey++;
-	}
-    
-	if (((relativex + 1) > m_cols) || ((relativey + text.size()) > m_rows)) {
-      	throw CursesException("Text doesn't fit in window.");
-    }
-
-    m_texts.push_back(TextPtr(new Text(name, relativex, relativey, text)));
-    mvwaddstr(m_window, relativey, relativex, text.c_str());
-  }
-
-  /**
-   * @brief Remove a text element in the window
-   *
-   * @param name The name of the text element remove.
-   */
-  void removeText(const std::string &name) {
-	  std::vector<TextPtr>::iterator new_end = 
-		  std::remove_if(m_texts.begin(), m_texts.end(), [this, &name](const TextPtr& text) {
-			wmove(this->m_window, text->y(), text->x());
-			for (int i = 0; i < text->text().size(); i++) {
-				waddch(this->m_window, ' ');
-			}
-
-			return text->name() == name;
-	 	});
-  }
-  
-
-protected:
-  Window(const std::string &name, int x, int y, bool border, WINDOW *window)
-      : Element(name, x, y), m_border(border), m_window(window) {
-    getmaxyx(m_window, m_rows, m_cols);
-	if (m_border) {
-		m_rows--;
-		m_cols--;
-	}
-  }
-
-private:
-  class Text : public Element {
+class Text : public Element {
   public:
-    Text(const std::string &name, int x, int y, const std::string &text)
-        : Element(name, x, y), m_text(text) {}
+    Text(int x, int y, const std::string &text)
+        : Element(x, y), m_text(text) {}
 
     virtual ~Text() = default;
 
@@ -223,13 +112,117 @@ private:
      * @copydoc Element::cols()
      */
     int cols() const { return m_text.size(); }
+  
+	void draw(WINDOW* parent) {
+		mvwaddstr(parent, y(), x(), m_text.c_str());
+	}
 
   private:
     std::string m_text;
   };
 
+
+
+/**
+ * @brief A window in the interface
+ */
+class Window : public Element {
+public:
+
+  Window(int x, int y, int rows, int cols, bool border)
+      : Element(x, y), m_rows(rows), m_cols(cols), m_border(border), m_window(NULL) {
+	if (m_border) {
+		m_rows--;
+		m_cols--;
+	}
+  }
+
+
+  /** 
+   * @brief Destructor
+   */
+  virtual ~Window() {
+	delwin(m_window);
+  }
+
+  /**
+   * @brief Updates the screen with the changes in the window
+   */
+  void update() { 
+	  //std::for_each(m_subwindows.begin(), m_subwindows.end(), [&](WindowPtr& window) {
+	  //		window->update();
+	  //});
+	  touchwin(m_window);
+	  wrefresh(m_window);
+  }
+
+  /**
+   * @copydoc Element::rows()
+   */
+  int rows() const { return m_rows; }
+
+  /**
+   * @copydoc Element::cols()
+   */
+  int cols() const { return m_cols; }
+
+
+  void draw(WINDOW* parent) {
+    m_window = derwin(parent, m_cols, m_rows, y(), x());
+	if (m_border) {
+		box(m_window, 0, 0);
+	}
+  }
+
+
+  template <typename WindowElement>
+  WindowElement& add(const std::string& name, std::unique_ptr<WindowElement> element) {
+	if (!element) {
+		throw CursesException("No element provided.");
+	}
+
+	if ((element->x() + element->cols() > m_cols) ||
+		 (element->y() + element->rows() > m_rows))	{
+		throw CursesException("Element doesn't fit in window");
+	}
+
+	WindowElement& ref = *element.get();
+	ref.draw(m_window);
+	m_elements[name] = std::move(element);
+	return ref;
+  }
+
+  /**
+   * @brief Remove an element in the window
+   *
+   * @param name The name of the element to remove.
+   */
+  void remove(const std::string &name) {
+	const ElementPtr& element = m_elements.at(name);
+	for (size_t i = element->y(); i < element->rows(); i++) {
+		wmove(this->m_window, i, element->x());
+		for (int j = 0; j < element->cols(); j++) {
+			waddch(this->m_window, ' ');
+		}
+	}
+  	m_elements.erase(name);
+  }
+
+protected:
+
+  /**
+   * @brief Protected constructor
+   *
+   * This exists solely to allow Screen to be a special type of Window.
+   */
+  Window(int x, int y, WINDOW* window) :
+   	Element(x, y), m_window(window) {
+	getmaxyx(window, m_cols, m_rows); 
+  }
+ 
+private:
   typedef std::unique_ptr<Window> WindowPtr;
-  typedef std::unique_ptr<Text> TextPtr;
+  typedef std::unique_ptr<Element> ElementPtr;
 
   WINDOW *m_window;
 
@@ -239,9 +232,7 @@ private:
 
   int m_cols;
 
-  std::vector<WindowPtr> m_subwindows;
-
-  std::vector<TextPtr> m_texts;
+  std::map<std::string, ElementPtr> m_elements;
 };
 
 /**
@@ -249,9 +240,13 @@ private:
  */
 class Screen : public Window {
 public:
-  Screen() : Window("stdscr", 0, 0, false, initscr()) {}
+  Screen() : Window(0, 0, initscr()) {}
 
   virtual ~Screen() { endwin(); }
+
+  virtual void draw(WINDOW* window) {
+	throw CursesException("Screen should never be drawn.");
+  }
 };
 
 }
