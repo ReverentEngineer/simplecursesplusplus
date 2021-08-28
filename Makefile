@@ -19,4 +19,4 @@ latex:
 	doxygen
 
 clean:
-	rm -rf html latex simple1
+	rm -rf html latex simple[12]
